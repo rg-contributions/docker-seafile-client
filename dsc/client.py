@@ -198,13 +198,18 @@ class SeafileClient:
 
     def watch_status(self):
         prev_status = dict()
+        max_name_len = 0
+        fmt = "Library {:%ds} {}" % max_name_len
         while True:
             time.sleep(const.STATUS_POLL_PERIOD)
             cur_status = self.get_status()
-            for folder, state in cur_status.items():
-                if state != prev_status.get(folder):
-                    logging.info("Library %s:\t%s", folder, state)
-                prev_status[folder] = cur_status[folder]
+            for library, state in cur_status.items():
+                if state != prev_status.get(library):
+                    if 30 > len(library) > max_name_len:
+                        max_name_len = len(library)
+                        fmt = "Library {:%ds}    {}" % max_name_len
+                    logging.info(fmt.format(library, state))
+                prev_status[library] = cur_status[library]
 
     def get_local_libraries(self) -> set:
         cmd = "seaf-cli list"
