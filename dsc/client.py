@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from cached_property import cached_property_with_ttl
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import seafile
 
 from dsc import const
@@ -22,14 +24,35 @@ class SeafileClient:
                  user: str,
                  passwd: str,
                  app_dir: str = const.DEFAULT_APP_DIR):
-        # check if host supports https
-        up = urlparse(requests.get(f"http://{host}").url)
-        self.url = f"{up.scheme}://{up.netloc}"
         self.user = user
         self.password = passwd
         self.app_dir = os.path.abspath(app_dir)
         self.rpc = seafile.RpcClient(os.path.join(self.app_dir, 'seafile-data', 'seafile.sock'))
         self.__token = None
+
+        # determine server URL (assume HTTPS unless explicitly specified)
+        if host.startswith('http://') or host.startswith('https://'):
+            self.url = host.rstrip('/')
+        else:
+            self.url = f"https://{host}"
+
+        # configure session with retry strategy
+        # enable urllib3 retry logging at DEBUG level (shows retry attempts)
+        urllib3_logger = logging.getLogger("urllib3.connectionpool")
+        urllib3_logger.setLevel(logging.DEBUG)
+        urllib3_logger.propagate = True
+
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=30,
+            backoff_factor=2,
+            backoff_max=60,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods=["GET", "POST"]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def __str__(self):
         return f"SeafileClient({self.user}@{self.url})"
@@ -42,7 +65,7 @@ class SeafileClient:
         if self.__token is None:
             url = f"{self.url}/api2/auth-token/"
             _lg.info("Fetching token: %s", url)
-            r = requests.post(url, data={"username": self.user, "password": self.password})
+            r = self.session.post(url, data={"username": self.user, "password": self.password})
             if r.status_code != 200:
                 raise RuntimeError(f"Can't get token: {r.text}")
             self.__token = r.json()["token"]
@@ -53,7 +76,7 @@ class SeafileClient:
         url = f"{self.url}/api2/repos/"
         _lg.info("Fetching remote libraries: %s", url)
         auth_header = {"Authorization": f"Token {self.token}"}
-        r = requests.get(url, headers=auth_header)
+        r = self.session.get(url, headers=auth_header)
         if r.status_code != 200:
             raise RuntimeError(r.text)
         r_libs = {lib["id"]: lib["name"] for lib in r.json()}
