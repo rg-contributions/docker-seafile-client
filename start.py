@@ -46,8 +46,6 @@ def main():
         parser.error("username is not specified")
     if not args.password:
         parser.error("password is not specified")
-    if not args.libraries:
-        parser.error("library is not specified")
 
     setup_uid(args.uid, args.gid)
     create_dir(const.DEFAULT_APP_DIR)
@@ -58,12 +56,16 @@ def main():
     client.configure(args, check_for_daemon=False)
 
     libs_to_sync = set()
-    for arg_lib in args.libraries.split(sep=":"):
-        lib_id = client.get_library_id(arg_lib)
-        if lib_id:
-            libs_to_sync.add(lib_id)
-        else:
-            _lg.warning("Library %s is not found on server %s", arg_lib, args.server)
+    if args.libraries:
+        for arg_lib in args.libraries.split(sep=":"):
+            lib_id = client.get_library_id(arg_lib)
+            if lib_id:
+                libs_to_sync.add(lib_id)
+            else:
+                _lg.warning("Library %s is not found on server %s", arg_lib, args.server)
+    else:
+        _lg.info("No libraries specified, syncing all libraries")
+        libs_to_sync = set(client.remote_libraries.keys())
 
     # don't start to sync libraries already in sync
     libs_to_sync -= client.get_local_libraries()
@@ -79,7 +81,7 @@ def main():
 
     for lib_id in libs_to_sync:
         client.sync_lib(lib_id, libs_dir)
-    client.watch_status()
+    client.watch_status(libs_dir, sync_all=not args.libraries)
 
     client.stop_daemon()
     return 0

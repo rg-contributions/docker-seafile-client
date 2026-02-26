@@ -138,7 +138,24 @@ class SeafileClient:
 
     def sync_lib(self, lib_id: str, parent_dir: str = const.DEFAULT_LIBS_DIR):
         lib_name = self.remote_libraries[lib_id]
-        lib_dir = os.path.join(parent_dir, lib_name.replace(" ", "_"))
+        clean_name = lib_name.replace(" ", "_")
+        lib_dir = os.path.join(parent_dir, clean_name)
+
+        # Handle naming collisions
+        if os.path.exists(lib_dir):
+            # Check if this directory is already synced to THIS library
+            # seaf-cli list output looks like:
+            # LibraryName  ID  Path
+            # So we check seaf-cli list to see if lib_id is already synced to lib_dir
+            local_libs_info = self.get_local_libraries_info()
+            if lib_id in local_libs_info and os.path.abspath(local_libs_info[lib_id]) == os.path.abspath(lib_dir):
+                _lg.info("Library %s already synced to %s", lib_name, lib_dir)
+                return
+            else:
+                # Collision! Append postfix
+                lib_dir = os.path.join(parent_dir, f"{clean_name}_{lib_id[:8]}")
+                _lg.info("Naming collision for %s, using %s", lib_name, lib_dir)
+
         create_dir(lib_dir)
         cmd = [
             "seaf-cli",
@@ -219,12 +236,34 @@ class SeafileClient:
 
         return statuses
 
-    def watch_status(self):
+    def watch_status(self, libs_dir: str, sync_all: bool = False):
         prev_status = dict()
         max_name_len = 0
         fmt = "Library {:%ds} {}" % max_name_len
+        last_remote_check = time.time()
+        remote_check_interval = 300  # Check for new libraries every 5 minutes
+
         while True:
             time.sleep(const.STATUS_POLL_PERIOD)
+
+            # Periodically check for new remote libraries if sync_all is enabled
+            if sync_all and time.time() - last_remote_check > remote_check_interval:
+                last_remote_check = time.time()
+                try:
+                    # Clear cache to get fresh list
+                    if hasattr(self, 'remote_libraries'):
+                        del self.remote_libraries
+                    
+                    remote_libs = self.remote_libraries
+                    local_libs = self.get_local_libraries()
+                    new_libs = set(remote_libs.keys()) - local_libs
+                    
+                    for lib_id in new_libs:
+                        _lg.info("New library detected: %s (%s). Starting sync.", remote_libs[lib_id], lib_id)
+                        self.sync_lib(lib_id, libs_dir)
+                except Exception as e:
+                    _lg.error("Failed to check for new remote libraries: %s", e)
+
             cur_status = self.get_status()
             for library, state in cur_status.items():
                 if state != prev_status.get(library):
@@ -235,15 +274,25 @@ class SeafileClient:
                 prev_status[library] = cur_status[library]
 
     def get_local_libraries(self) -> set:
+        return set(self.get_local_libraries_info().keys())
+
+    def get_local_libraries_info(self) -> dict:
         cmd = "seaf-cli list"
         _lg.info("Listing local libraries: %s", cmd)
         out = subprocess.check_output(self.__gen_cmd(cmd))
         out = out.decode().splitlines()[1:]  # first line is a header
 
-        local_libs = set()
+        local_libs = dict()
         for line in out:
-            lib_name, lib_id, lib_path = line.rsplit(maxsplit=3)
-            local_libs.add(lib_id)
+            # seaf-cli list output: name  id  path  [status]
+            # it's tricky to parse because name can have spaces
+            # but id is always 36 chars, and path is absolute
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            lib_id = parts[-2]
+            lib_path = parts[-1]
+            local_libs[lib_id] = lib_path
         return local_libs
 
     def configure(self, args: argparse.Namespace, check_for_daemon: bool = True):
