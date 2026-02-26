@@ -1,15 +1,16 @@
 FROM debian:bookworm-slim
 
-# Install seafile client
+# Install seafile client using AppImage (Official recommended way)
 RUN apt-get update && \
-    apt-get install gnupg curl python3.11-venv -y && \
+    apt-get install -y curl python3.11-venv libfuse2 kmod && \
     rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL https://linux-clients.seafile.com/seafile.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/seafile.gpg && \
-    echo 'deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/seafile.gpg] https://linux-clients.seafile.com/seafile-deb/bookworm/ stable main' \
-    > /etc/apt/sources.list.d/seafile.list && \
-    apt-get update -y && \
-    apt-get install -y seafile-cli && \
-    rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://sos-ch-dk-2.exo.io/seafile-downloads/Seafile-x86_64-9.0.16.AppImage -o /usr/local/bin/seafile-appimage && \
+    chmod +x /usr/local/bin/seafile-appimage && \
+    /usr/local/bin/seafile-appimage --appimage-extract && \
+    mv squashfs-root /opt/seafile-client && \
+    ln -s /opt/seafile-client/usr/bin/seaf-cli /usr/local/bin/seaf-cli && \
+    ln -s /opt/seafile-client/usr/bin/seafile /usr/local/bin/seafile
 
 # Use virtual environment
 ENV VIRTUAL_ENV=/opt/venv
