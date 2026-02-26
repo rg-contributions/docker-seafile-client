@@ -4,8 +4,8 @@ FROM debian:bookworm-slim
 RUN apt-get update && \
     apt-get install gnupg curl python3.11-venv -y && \
     rm -rf /var/lib/apt/lists/*
-RUN curl https://linux-clients.seafile.com/seafile.asc | apt-key add - && \
-    echo 'deb [arch=amd64] https://linux-clients.seafile.com/seafile-deb/bookworm/ stable main' \
+RUN curl -fsSL https://linux-clients.seafile.com/seafile.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/seafile.gpg && \
+    echo 'deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/seafile.gpg] https://linux-clients.seafile.com/seafile-deb/bookworm/ stable main' \
     > /etc/apt/sources.list.d/seafile.list && \
     apt-get update -y && \
     apt-get install -y seafile-cli && \
