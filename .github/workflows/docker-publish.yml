@@ -45,10 +45,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           push: true
-          tags: snegov/seafile-client:${{ github.ref_name }}
+          tags: rgsoftware81/seafile-sync-client:${{ github.ref_name }}
 
       - name: Build and push latest
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: snegov/seafile-client:latest
+          tags: rgsoftware81/seafile-sync-client:latest
