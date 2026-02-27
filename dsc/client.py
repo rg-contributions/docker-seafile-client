@@ -10,7 +10,10 @@ from cached_property import cached_property_with_ttl
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import seafile
+try:
+    import seafile_rpc as seafile
+except ImportError:
+    import seafile
 
 from dsc import const
 from dsc.misc import create_dir, hide_password
